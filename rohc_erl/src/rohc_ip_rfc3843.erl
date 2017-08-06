@@ -261,9 +261,6 @@ encode(Context, ?pkt_IR) ->
 %%     - - - - - - - - - - - - - - - -
     
     %% exxucao: type of IR is always <<16#fc>> for IP-only profile
-    %% The LSB is not defined in RFC 3095. However, in RFC  5225 ROHCv2,
-    %% the IR type of IP is always <<16#fd>>. So I guess for ROHC, the 
-    %% IR type should be <<16#fc>> 
     CidAndType = 
         case Cid of 
             0 ->
@@ -302,13 +299,73 @@ encode(Context, ?pkt_IR) ->
        StaticChain/binary,DynChain/binary,Seq/binary>>
     };
 
+encode(Context, ?pkt_IR_DYN) ->
+	#rohc_profile{sn          = SN,
+				  context_id  = Cid,
+				  large_cid   = _IsLarge,
+				  package_tmp = PackageInfo} = Context,
+%%      0   1   2   3   4   5   6   7
+%%     --- --- --- --- --- --- --- ---
+%%    :         Add-CID octet         : if for small CIDs and CID != 0
+%%    +---+---+---+---+---+---+---+---+
+%%    | 1   1   1   1   1   0   0   0 | IR-DYN packet type
+%%    +---+---+---+---+---+---+---+---+
+%%    :                               :
+%%    /     0-2 octets of CID info    / 1-2 octets if for large CIDs
+%%    :                               :
+%%    +---+---+---+---+---+---+---+---+
+%%    |            Profile            | 1 octet
+%%    +---+---+---+---+---+---+---+---+
+%%    |              CRC              | 1 octet
+%%    +---+---+---+---+---+---+---+---+
+%%    |                               |
+%%    /         Dynamic chain         / variable length
+%%    |                               |
+%%    +---+---+---+---+---+---+---+---+
+%%    :                               :
+%%    /           Payload             / variable length
+%%    :                               :
+%%     - - - - - - - - - - - - - - - -
+
+	CidAndType = 
+		case Cid of 
+			0 ->
+				<< 16#f8 >>;
+            C when C > 15 ->
+                throw(large_cid_not_supported);
+            _ ->
+                << Cid:8, 16#f8>>
+        end,
+    
+    Profile = << 16#04 >>,   
+        
+    #{header_info := PackageHeader} = PackageInfo,
+	#{ip_version         := 4,            
+	  ip_tos             := SrvcType,      
+	  ip_identification  := ID,               
+	  ip_ttl             := TTL
+	 } = PackageHeader,
+
+    DynChain = << SrvcType:8, TTL:8, ID:16#20>>,
+    Seq = << SN:16>>,
+    
+    %% calculate CRC
+    PktNoCRC = <<CidAndType/binary,Profile/binary, 0,
+                 DynChain/binary,Seq/binary>>,
+    CRC = rohc_util:crc8(PktNoCRC),  
+    
+    {ok, Context#rohc_profile{sn=SN+1,
+                              package_tmp = undefined,
+                              package = PackageInfo},
+     <<CidAndType/binary,Profile/binary,CRC/binary,
+       DynChain/binary,Seq/binary>>
+    };
 encode(Context, ?pkt_UO_2) ->
     {ok, Context, <<>>};
 
 encode(Context, _) ->
     {nok, Context, not_supported}.
 
-%%% TODO ipv6
 %%% -------------------------------------------------------------
 %%% decide_package_type(Context, State) -> Packet_Type
 %%%
@@ -333,6 +390,7 @@ decide_package_type(Context, ?state_fo) ->
                     ?pkt_IR_DYN;
                 _ ->
                     %% more fields changed, fallback to IR
+                    %% TODO should try pkt_UO_2 extenstion3 rather than pkt_IR
                     ?pkt_IR
             end
     end;        
