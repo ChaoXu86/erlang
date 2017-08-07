@@ -1,7 +1,7 @@
 -module(rohc_util).
 
 -export([crc8/1,
-		 gen_rand_sn/1]).
+         gen_rand_sn/1]).
 
 crc8(_Binary) ->
     <<0>>.

@@ -8,7 +8,7 @@
          create_context/3,
          encode/2,
          decide_package_type/2,
-		 decide_next_state/2]).
+         decide_next_state/2]).
 -endif.
 
 -record(rohc_profile,

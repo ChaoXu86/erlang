@@ -38,8 +38,8 @@
          max_cid,           %% negotiated Max cid between UE and MME
          large_cid = false, %% not supported yet
          profile,           %% list of supported profile. 
-                            %% [rohc_ip_rfc3843, rohc_uncompressed_rfc5795]
-        
+         %% [rohc_ip_rfc3843, rohc_uncompressed_rfc5795]
+         
          contexts = []      %% list of profile context
         }).
 
@@ -121,14 +121,14 @@ init(MaxCid, UEProfile) ->
 %%% convert profile to human readable profile
 %%% -------------------------------------------------------------
 convert_profile(Profile) ->
-	%% !!! IMPORTANT
-	%% sort by preference
-	SortedProfiles = lists:keysort(#mme_supported_profile_info.preference,
-								   ?mme_supported_profiles),
-	[Cb ||#mme_supported_profile_info
-		  {id = Id, 
-		   callback=Cb} <- SortedProfiles, 
-		  Profile == (Profile bor Id)].
+    %% !!! IMPORTANT
+    %% sort by preference
+    SortedProfiles = lists:keysort(#mme_supported_profile_info.preference,
+                                   ?mme_supported_profiles),
+    [Cb ||#mme_supported_profile_info
+          {id = Id, 
+           callback=Cb} <- SortedProfiles, 
+          Profile == (Profile bor Id)].
 
 %%% -------------------------------------------------------------
 %%% get_context(RawPackage) -> Context
@@ -143,10 +143,28 @@ get_context(RawPackage) ->
     case find_context(Compressor, RawPackage) of
         false ->            
             create_context(Compressor, RawPackage);
-        Context ->
-            Context
+        #rohc_profile{profile=?rohc_uncompressed_rfc5795} = UncompProfile ->            
+            %%% special handling if uncompressed profile is found.
+            %%% try whether other profile could handle the package.
+            %%% 1. If yes, use other profile
+            %%% 2. If no, use existing uncompressed profile
+            %%%
+            %%% NOTE, RFC3095
+            %%% * only one uncompressed profile context each compressor
+            %%% * try associate cid0 with uncompressed profile context
+            %%%   if uncompressed profile is frequent used.
+            case create_context(Compressor, RawPackage) of                
+                #rohc_profile{profile=?rohc_uncompressed_rfc5795} ->
+                    %% no other profile could handle the package
+                    %% use existing uncompressed profile context                    
+                    UncompProfile;
+                NewProfile ->                    
+                    NewProfile
+            end;                   
+        OtherContext ->
+            OtherContext
     end.
-    
+
 %%% -------------------------------------------------------------
 %%% put_context(Context) -> void
 %%%
@@ -166,39 +184,65 @@ put_context(Context) ->
     ?co_ci_var(compressor, 
                Compressor#rohc_compressor{contexts = NewContexts}),
     ok.
-        
+
 %%% -------------------------------------------------------------
 %%% find_context(Compressor, RawPackage) -> Context | false
 %%%
 %%% find if there is any existing context could handle the RawPackage
-%%% TODO 1. only one uncompressed profile context each compressor
-%%%      2. try associate cid0 with uncompressed profile context
-%%%         if uncompressed profile is frequent used.
 %%% -------------------------------------------------------------
 find_context(Compressor, RawPackage) ->
     #rohc_compressor{contexts = ExistingCxts} = Compressor,
-    find_context_int(ExistingCxts, RawPackage).
-
-find_context_int([], _) ->
-    false;
-find_context_int([Context|RestContexts], RawPackage) ->
-    case ?cxt_profile(Context):could_handle(Context, RawPackage) of
-        {true, UpdatedContext} ->
-            UpdatedContext;
-        {false, _ } ->
-            find_context_int(RestContexts, RawPackage)
+    
+    case find_context_int(ExistingCxts, RawPackage, []) of
+        [] ->            
+            false;
+        [OneCxt] ->            
+            OneCxt;
+        MultiCxts ->            
+            %% Could be more than one context, e.g. UDP, IP, uncompressed 
+            %% profile context could handle current package, choose the context
+            %% with highest preference. 
+            %% The reverse is to sort the preference in descent order
+            SortedMMESupportedProfInfos = lists:reverse(
+                lists:keysort(#mme_supported_profile_info.preference,
+                              ?mme_supported_profiles) ),
+            SortedProfiles = [Cb ||#mme_supported_profile_info
+                                   {callback=Cb} <- SortedMMESupportedProfInfos],            
+            find_first_match_context(SortedProfiles, MultiCxts)
     end.
 
+
+find_context_int([], _, FoundCxts) ->
+    FoundCxts;
+find_context_int([Context|RestContexts], RawPackage, FoundCxts) ->
+    case ?cxt_profile(Context):could_handle(Context, RawPackage) of
+        {true, UpdatedContext} ->            
+            %% yeah, we got one candidate context, searching for more
+            find_context_int(RestContexts, RawPackage, [UpdatedContext|FoundCxts]);
+        {false, _ } ->
+            find_context_int(RestContexts, RawPackage, FoundCxts)
+    end.
+
+find_first_match_context([], _MultiCxts) ->
+    false;
+find_first_match_context([Profile|RestProfiles], MultiCxts) ->    
+    case lists:keyfind(Profile, #rohc_profile.profile, MultiCxts) of
+        false ->            
+            find_first_match_context(RestProfiles, MultiCxts);        
+        MatchCxt ->            
+            MatchCxt
+    end.
+        
 %%% -------------------------------------------------------------
 %%% create_context(Compressor, RawPackage) -> Context 
 %%%
 %%% create rohc profile context
 %%% -------------------------------------------------------------
 create_context(Compressor, RawPackage) ->
-     Cid = allocate_context_id(Compressor),
-     #rohc_compressor{profile   = Profiles,
-					  large_cid = IsLargeCid} = Compressor,
-     create_context_int(Profiles, Cid, IsLargeCid, RawPackage).
+    Cid = allocate_context_id(Compressor),
+    #rohc_compressor{profile   = Profiles,
+                     large_cid = IsLargeCid} = Compressor,
+    create_context_int(Profiles, Cid, IsLargeCid, RawPackage).
 
 create_context_int([], CidorCxt, _IsLargeCid, _RawPackage) ->
     CidorCxt;  
@@ -229,22 +273,22 @@ allocate_context_id(Compressor) ->
                      contexts = ExistingCxts} = Compressor,
     
     case length(ExistingCxts) == MaxCid + 1 of
-         true ->
-             %% all cid used, get the oldest context id
-             {OldestCid, _} = 
-                 lists:foldl(fun(Cxt, {Cid, Ts}) ->
-                                     CurCxtTs = ?cxt_timestamp(Cxt),
-                                     case  CurCxtTs < Ts of
-                                         true ->
-                                             {?cxt_id(Cxt), CurCxtTs};
-                                         false ->
-                                             {Cid, Ts}
-                                     end
-                             end, 0, ExistingCxts),
-             OldestCid;
-         false ->
-             UsedCids = lists:sort([?cxt_id(Cxt)||Cxt<-ExistingCxts]),
-             get_free_cxt_id(UsedCids, 0, MaxCid)
+        true ->
+            %% all cid used, get the oldest context id
+            {OldestCid, _} = 
+                lists:foldl(fun(Cxt, {Cid, Ts}) ->
+                                    CurCxtTs = ?cxt_timestamp(Cxt),
+                                    case  CurCxtTs < Ts of
+                                        true ->
+                                            {?cxt_id(Cxt), CurCxtTs};
+                                        false ->
+                                            {Cid, Ts}
+                                    end
+                            end, 0, ExistingCxts),
+            OldestCid;
+        false ->
+            UsedCids = lists:sort([?cxt_id(Cxt)||Cxt<-ExistingCxts]),
+            get_free_cxt_id(UsedCids, 0, MaxCid)
     end.
 
 %%% -------------------------------------------------------------
@@ -270,8 +314,7 @@ get_free_cxt_id([_UsedId|_Rest],FreeId,_MaxCxtId) ->
 %% 3> rohc_comp:compress(Ipv4).
 init_dyn() ->
     put(nsf_init_data,{nsfwos_initData,worker_class, worker_key, parent_if,
-        parent_proc, server_ref, ccTag, creation, dynamic_tc,
-        park_timer, min_heap_size, worker_if,
-                          replica_state}).
+                       parent_proc, server_ref, ccTag, creation, dynamic_tc,
+                       park_timer, min_heap_size, worker_if,
+                       replica_state}).
 
-    

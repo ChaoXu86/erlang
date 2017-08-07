@@ -46,46 +46,46 @@
 %%% Create init context for rohc tunnel
 %%% -------------------------------------------------------------
 create_context(CxtId, IsLarge, RawPackage) when is_integer(CxtId) ->
-	%% create context from raw package
-	case parse_package(RawPackage) of
-		nok ->
-			not_support;
-		Package ->
-			Ts = erlang:system_time(milli_seconds),
-			#rohc_profile
-			{context_id  = CxtId,
-			 large_cid   = IsLarge,
-			 state       = ?state_ir,
-			 mode        = ?mode_u,
-			 last_act_ts = Ts,
-			 sn          = rohc_util:gen_rand_sn(Ts),
-			 package_tmp = Package}
-	end;
+    %% create context from raw package
+    case parse_package(RawPackage) of
+        nok ->
+            not_support;
+        Package ->
+            Ts = erlang:system_time(milli_seconds),
+            #rohc_profile
+            {context_id  = CxtId,
+             large_cid   = IsLarge,
+             state       = ?state_ir,
+             mode        = ?mode_u,
+             last_act_ts = Ts,
+             sn          = rohc_util:gen_rand_sn(Ts),
+             package_tmp = Package}
+    end;
 create_context(#rohc_profile{profile=?rohc_uncompressed_rfc5795} = Context, 
-			   _IsLarge,
-			   _RawPackage)  ->
-	%% create context from existing context. 
+               _IsLarge,
+               _RawPackage)  ->
+    %% create context from existing context. 
     %% i.e. the RawPackage has already be parsed by other profile,
     %% let's try whether currect profile could also handle the profile
-
-	PktFromLowLayer = Context#rohc_profile.package_tmp,	
-	#{header_info := HInfoLow,
-	  payload     := PayloadLow} = PktFromLowLayer,
-	
-	%% try to parse the payload as ip profile
+    
+    PktFromLowLayer = Context#rohc_profile.package_tmp,	
+    #{header_info := HInfoLow,
+      payload     := PayloadLow} = PktFromLowLayer,
+    
+    %% try to parse the payload as ip profile
     case parse_package(PayloadLow) of
-		nok ->
-			%% could not be handled by ip profile, 
+        nok ->
+            %% could not be handled by ip profile, 
             %% return lower layer context without changing
-			Context;
-		#{header_info := HInfo} = Package ->
-			%% merge current header info with lower layer header
-			NewPackage = Package#{header_info => maps:merge(HInfoLow, HInfo)},
-			Context#rohc_profile{profile     = ?rohc_ip_rfc3843,
-								 package_tmp =  NewPackage}
-	end;	
+            Context;
+        #{header_info := HInfo} = Package ->
+            %% merge current header info with lower layer header
+            NewPackage = Package#{header_info => maps:merge(HInfoLow, HInfo)},
+            Context#rohc_profile{profile     = ?rohc_ip_rfc3843,
+                                 package_tmp =  NewPackage}
+    end;	
 create_context(_Context, _IsLarge, _RawPackage) ->
-	not_support.
+    not_support.
 
 %%% -------------------------------------------------------------
 %%% could_handle(Context, RawPackage) -> {true|false, NewContext} 
@@ -97,9 +97,9 @@ create_context(_Context, _IsLarge, _RawPackage) ->
 %%% -------------------------------------------------------------
 could_handle(Context, RawPackage) ->
     case parse_package(RawPackage) of
-        nok ->
-			{false, Context};
-        #{header_info := IPH_New} = NewPackage ->
+        nok ->       
+            {false, Context};
+        #{header_info := IPH_New} = NewPackage ->            
             #rohc_profile{package = PrePackage} = Context,
             #{header_info := IPH_Pre} = PrePackage,            
             case is_same_ip_stream(IPH_New, IPH_Pre) of
@@ -128,7 +128,7 @@ parse_package(RawPackage) when is_binary(RawPackage) ->
               nok    
     end;
 parse_package(_) ->
-	nok.
+    nok.
 
 parse_ipv4_package(RawPackage) ->      
     TotLen = byte_size(RawPackage),
@@ -180,7 +180,7 @@ parse_ipv6_package(RawPackage) ->
        SrcIP:16/binary, 
        DestIP:16/binary, 
        Payload/binary>> = RawPackage,
-
+    
     %% check length, jumbo payload is not considered
     if PayLoadLen + 40 /= TotLen ->
            throw(invalid_ipv6_header);
@@ -231,34 +231,34 @@ is_same_ip_stream(_, _) ->
 encode(Context, ?pkt_IR) ->    
     #rohc_profile{sn          = SN,
                   context_id  = Cid,
-				  large_cid   = _IsLarge,
+                  large_cid   = _IsLarge,
                   package_tmp = PackageInfo} = Context,
-%%     0   1   2   3   4   5   6   7
-%%     --- --- --- --- --- --- --- ---
-%%    |         Add-CID octet         |  if for small CIDs and CID != 0
-%%    +---+---+---+---+---+---+---+---+
-%%    | 1   1   1   1   1   1   0 | D |
-%%    +---+---+---+---+---+---+---+---+
-%%    |                               |
-%%    /    0-2 octets of CID info     /  1-2 octets if for large CIDs
-%%    |                               |
-%%    +---+---+---+---+---+---+---+---+
-%%    |            Profile            |  1 octet
-%%    +---+---+---+---+---+---+---+---+
-%%    |              CRC              |  1 octet
-%%    +---+---+---+---+---+---+---+---+
-%%    |                               |
-%%    |         Static chain          |  variable length
-%%    |                               |
-%%    +---+---+---+---+---+---+---+---+
-%%    |                               |
-%%    |         Dynamic chain         |  present if D = 1, variable length
-%%    |                               |
-%%     - - - - - - - - - - - - - - - -
-%%    |                               |
-%%    |           Payload             |  variable length
-%%    |                               |
-%%     - - - - - - - - - - - - - - - -
+    %%     0   1   2   3   4   5   6   7
+    %%     --- --- --- --- --- --- --- ---
+    %%    |         Add-CID octet         |  if for small CIDs and CID != 0
+    %%    +---+---+---+---+---+---+---+---+
+    %%    | 1   1   1   1   1   1   0 | D |
+    %%    +---+---+---+---+---+---+---+---+
+    %%    |                               |
+    %%    /    0-2 octets of CID info     /  1-2 octets if for large CIDs
+    %%    |                               |
+    %%    +---+---+---+---+---+---+---+---+
+    %%    |            Profile            |  1 octet
+    %%    +---+---+---+---+---+---+---+---+
+    %%    |              CRC              |  1 octet
+    %%    +---+---+---+---+---+---+---+---+
+    %%    |                               |
+    %%    |         Static chain          |  variable length
+    %%    |                               |
+    %%    +---+---+---+---+---+---+---+---+
+    %%    |                               |
+    %%    |         Dynamic chain         |  present if D = 1, variable length
+    %%    |                               |
+    %%     - - - - - - - - - - - - - - - -
+    %%    |                               |
+    %%    |           Payload             |  variable length
+    %%    |                               |
+    %%     - - - - - - - - - - - - - - - -
     
     %% exxucao: type of IR is always <<16#fc>> for IP-only profile
     CidAndType = 
@@ -272,7 +272,7 @@ encode(Context, ?pkt_IR) ->
         end,
     
     Profile = << 16#04 >>,   
-        
+    
     #{header_info := PackageHeader} = PackageInfo,
     #{ip_version         := 4,            
       ip_tos             := SrvcType,      
@@ -300,37 +300,37 @@ encode(Context, ?pkt_IR) ->
     };
 
 encode(Context, ?pkt_IR_DYN) ->
-	#rohc_profile{sn          = SN,
-				  context_id  = Cid,
-				  large_cid   = _IsLarge,
-				  package_tmp = PackageInfo} = Context,
-%%      0   1   2   3   4   5   6   7
-%%     --- --- --- --- --- --- --- ---
-%%    :         Add-CID octet         : if for small CIDs and CID != 0
-%%    +---+---+---+---+---+---+---+---+
-%%    | 1   1   1   1   1   0   0   0 | IR-DYN packet type
-%%    +---+---+---+---+---+---+---+---+
-%%    :                               :
-%%    /     0-2 octets of CID info    / 1-2 octets if for large CIDs
-%%    :                               :
-%%    +---+---+---+---+---+---+---+---+
-%%    |            Profile            | 1 octet
-%%    +---+---+---+---+---+---+---+---+
-%%    |              CRC              | 1 octet
-%%    +---+---+---+---+---+---+---+---+
-%%    |                               |
-%%    /         Dynamic chain         / variable length
-%%    |                               |
-%%    +---+---+---+---+---+---+---+---+
-%%    :                               :
-%%    /           Payload             / variable length
-%%    :                               :
-%%     - - - - - - - - - - - - - - - -
-
-	CidAndType = 
-		case Cid of 
-			0 ->
-				<< 16#f8 >>;
+    #rohc_profile{sn          = SN,
+                  context_id  = Cid,
+                  large_cid   = _IsLarge,
+                  package_tmp = PackageInfo} = Context,
+    %%      0   1   2   3   4   5   6   7
+    %%     --- --- --- --- --- --- --- ---
+    %%    :         Add-CID octet         : if for small CIDs and CID != 0
+    %%    +---+---+---+---+---+---+---+---+
+    %%    | 1   1   1   1   1   0   0   0 | IR-DYN packet type
+    %%    +---+---+---+---+---+---+---+---+
+    %%    :                               :
+    %%    /     0-2 octets of CID info    / 1-2 octets if for large CIDs
+    %%    :                               :
+    %%    +---+---+---+---+---+---+---+---+
+    %%    |            Profile            | 1 octet
+    %%    +---+---+---+---+---+---+---+---+
+    %%    |              CRC              | 1 octet
+    %%    +---+---+---+---+---+---+---+---+
+    %%    |                               |
+    %%    /         Dynamic chain         / variable length
+    %%    |                               |
+    %%    +---+---+---+---+---+---+---+---+
+    %%    :                               :
+    %%    /           Payload             / variable length
+    %%    :                               :
+    %%     - - - - - - - - - - - - - - - -
+    
+    CidAndType = 
+        case Cid of 
+            0 ->
+                << 16#f8 >>;
             C when C > 15 ->
                 throw(large_cid_not_supported);
             _ ->
@@ -338,14 +338,14 @@ encode(Context, ?pkt_IR_DYN) ->
         end,
     
     Profile = << 16#04 >>,   
-        
+    
     #{header_info := PackageHeader} = PackageInfo,
-	#{ip_version         := 4,            
-	  ip_tos             := SrvcType,      
-	  ip_identification  := ID,               
-	  ip_ttl             := TTL
-	 } = PackageHeader,
-
+    #{ip_version         := 4,            
+      ip_tos             := SrvcType,      
+      ip_identification  := ID,               
+      ip_ttl             := TTL
+     } = PackageHeader,
+    
     DynChain = << SrvcType:8, TTL:8, ID:16#20>>,
     Seq = << SN:16>>,
     
@@ -403,16 +403,16 @@ decide_package_type(_Context, ?state_so) ->
 %%% decide next state of profile context
 %%% -------------------------------------------------------------
 decide_next_state(Context,?state_ir) ->
-	#rohc_profile{ir_count = IRCount} = Context,
-	case IRCount >= ?ir_count_max of
-		true ->
-			?state_fo;
-		false ->
-			?state_ir
-	end;
+    #rohc_profile{ir_count = IRCount} = Context,
+    case IRCount >= ?ir_count_max of
+        true ->
+            ?state_fo;
+        false ->
+            ?state_ir
+    end;
 decide_next_state(_Context, State) ->
-	list_to_atom(?MODULE_STRING ++ "_" ++ 
-					 atom_to_list(State) ++ "_change_state_not_supported").
+    list_to_atom(?MODULE_STRING ++ "_" ++ 
+                     atom_to_list(State) ++ "_change_state_not_supported").
 
 %%% -------------------------------------------------------------
 %%% get_diff_fields(OldPkt, NewPkt) -> [atom()]
