@@ -273,7 +273,8 @@ encode(Context, ?pkt_IR) ->
     
     Profile = << 16#04 >>,   
     
-    #{header_info := PackageHeader} = PackageInfo,
+    #{header_info := PackageHeader,
+      payload     := Payload} = PackageInfo,
     #{ip_version         := 4,            
       ip_tos             := SrvcType,      
       ip_identification  := ID,               
@@ -284,8 +285,12 @@ encode(Context, ?pkt_IR) ->
     
     StaticChain = 
         <<4:4,0:4, Proto:8, SrcIP/binary, DstIP/binary>>,
-    DynChain = << SrvcType:8, TTL:8, ID:16#20>>,
-    Seq = << SN:16>>,
+    %% TODO flags
+    Flags = 16#20,
+    GenericExtHeadList = <<0>>,
+    DynChain = << SrvcType:8, TTL:8, ID:16, Flags:8,                   
+                  GenericExtHeadList/binary>>,
+    Seq = << SN:16>>, 
     
     %% calculate CRC
     PktNoCRC = <<CidAndType/binary,Profile/binary, 0,
@@ -296,7 +301,8 @@ encode(Context, ?pkt_IR) ->
                               package_tmp = undefined,
                               package = PackageInfo},
      <<CidAndType/binary,Profile/binary,CRC/binary,
-       StaticChain/binary,DynChain/binary,Seq/binary>>
+       StaticChain/binary,DynChain/binary,Seq/binary,
+       Payload/binary>>
     };
 
 encode(Context, ?pkt_IR_DYN) ->
@@ -339,14 +345,19 @@ encode(Context, ?pkt_IR_DYN) ->
     
     Profile = << 16#04 >>,   
     
-    #{header_info := PackageHeader} = PackageInfo,
+    #{header_info := PackageHeader,
+      payload     := Payload} = PackageInfo,
     #{ip_version         := 4,            
       ip_tos             := SrvcType,      
       ip_identification  := ID,               
       ip_ttl             := TTL
      } = PackageHeader,
     
-    DynChain = << SrvcType:8, TTL:8, ID:16#20>>,
+    %% TODO flags
+    Flags = 16#20,
+    GenericExtHeadList = <<0>>,
+    DynChain = << SrvcType:8, TTL:8, ID:16,Flags:8, 
+                  GenericExtHeadList/binary>>,
     Seq = << SN:16>>,
     
     %% calculate CRC
@@ -358,7 +369,7 @@ encode(Context, ?pkt_IR_DYN) ->
                               package_tmp = undefined,
                               package = PackageInfo},
      <<CidAndType/binary,Profile/binary,CRC/binary,
-       DynChain/binary,Seq/binary>>
+       DynChain/binary,Seq/binary,Payload/binary>>
     };
 encode(Context, ?pkt_UO_2) ->
     {ok, Context, <<>>};

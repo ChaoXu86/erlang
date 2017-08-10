@@ -38,7 +38,7 @@
          max_cid,           %% negotiated Max cid between UE and MME
          large_cid = false, %% not supported yet
          profile,           %% list of supported profile. 
-         %% [rohc_ip_rfc3843, rohc_uncompressed_rfc5795]
+                            %% [rohc_ip_rfc3843, rohc_uncompressed_rfc5795]
          
          contexts = []      %% list of profile context
         }).
