@@ -59,6 +59,7 @@ create_context(CxtId, IsLarge, RawPackage) when is_integer(CxtId) ->
              mode        = ?mode_u,
              last_act_ts = Ts,
              sn          = rohc_util:gen_rand_sn(Ts),
+             sn_window   = rohc_util:sn_window_create(16, 4, 0), %% use macro
              package_tmp = Package}
     end;
 create_context(#rohc_profile{profile=?rohc_uncompressed_rfc5795} = Context, 
@@ -230,6 +231,7 @@ is_same_ip_stream(_, _) ->
 %%% -------------------------------------------------------------
 encode(Context, ?pkt_IR) ->    
     #rohc_profile{sn          = SN,
+                  sn_window   = SNWindow,
                   context_id  = Cid,
                   large_cid   = _IsLarge,
                   package_tmp = PackageInfo} = Context,
@@ -297,9 +299,10 @@ encode(Context, ?pkt_IR) ->
                  StaticChain/binary,DynChain/binary,Seq/binary>>,
     CRC = rohc_util:crc8(PktNoCRC),  
     
-    {ok, Context#rohc_profile{sn=SN+1,
-                              package_tmp = undefined,
-                              package = PackageInfo},
+    {ok, Context#rohc_profile{sn          = SN+1,
+                              sn_window   = rohc_util:sn_window_add_ref_value(SNWindow, SN),
+                              package_tmp = undefined,                              
+                              package     = PackageInfo},
      <<CidAndType/binary,Profile/binary,CRC/binary,
        StaticChain/binary,DynChain/binary,Seq/binary,
        Payload/binary>>
@@ -307,6 +310,7 @@ encode(Context, ?pkt_IR) ->
 
 encode(Context, ?pkt_IR_DYN) ->
     #rohc_profile{sn          = SN,
+                  sn_window   = SNWindow,
                   context_id  = Cid,
                   large_cid   = _IsLarge,
                   package_tmp = PackageInfo} = Context,
@@ -366,6 +370,7 @@ encode(Context, ?pkt_IR_DYN) ->
     CRC = rohc_util:crc8(PktNoCRC),  
     
     {ok, Context#rohc_profile{sn=SN+1,
+                              sn_window   = rohc_util:sn_window_add_ref_value(SNWindow, SN),
                               package_tmp = undefined,
                               package = PackageInfo},
      <<CidAndType/binary,Profile/binary,CRC/binary,

@@ -26,6 +26,7 @@
          so_count = 0,         %% integer(), number of package sent in so state 
          
          sn,                   %% integer(), current sequence number
+         sn_window,            %% #wlsb{}, window used to encode sn
          package,              %% maps(), common package info of last sent package
          package_tmp           %% maps(), common package info of current processing package
         

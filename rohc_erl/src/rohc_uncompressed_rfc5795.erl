@@ -25,6 +25,7 @@ create_context(CxtId, IsLarge, RawPackage) ->
              mode        = ?mode_u,
              last_act_ts = Ts,                        
              sn          = rohc_util:gen_rand_sn(Ts), 
+             sn_window   = rohc_util:sn_window_create(16, 4, 0), %% use macro
              package_tmp = Package}
     end.
 
