@@ -9,8 +9,10 @@ create(MaxCid, Profile) ->
     rohc_comp_context:init(MaxCid, Profile).
 
 compress(RawPackage) ->
-    Context = rohc_comp_context:get_context(RawPackage),
-    case ?cxt_state(Context):compress(Context, RawPackage) of
+    Context   = rohc_comp_context:get_context(RawPackage),    
+    NextState = ?cxt_profile(Context):decide_next_state(Context),
+
+    case NextState:compress(Context, RawPackage) of
         {ok, UpdatedContext, CompressedPackage} ->            
             rohc_comp_context:put_context(UpdatedContext),
             {ok, CompressedPackage};

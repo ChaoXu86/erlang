@@ -111,7 +111,7 @@ encode(Context, ?pkt_IR) ->
     
     %% final result 
     {ok, Context#rohc_profile{package_tmp = undefined,
-                              package = PackageInfo},
+                              package     = PackageInfo},
      <<CidAndType/binary,
        Profile/binary,
        CRC/binary,
@@ -152,7 +152,7 @@ encode(Context, ?pkt_normal) ->
     
     %% final result 
     {ok, Context#rohc_profile{package_tmp = undefined,
-                              package = PackageInfo},
+                              package     = PackageInfo},
      Pkt
     }.
 
@@ -175,7 +175,7 @@ decide_package_type(_Context, ?state_so) ->
 %%%
 %%% decide next state of profile context
 %%% -------------------------------------------------------------
-decide_next_state(Context,?state_ir) ->
+decide_next_state(#rohc_profile{state = ?state_ir} = Context) ->
     #rohc_profile{ir_count = IRCount} = Context,
     case IRCount >= ?ir_count_max of
         true ->
@@ -183,7 +183,7 @@ decide_next_state(Context,?state_ir) ->
         false ->
             ?state_ir
     end;
-decide_next_state(Context, ?state_fo) ->
+decide_next_state(#rohc_profile{state = ?state_fo} = Context) ->
     %% TODO implement expontienal backoff algorithm instead of hard code
     #rohc_profile{ir_count = IRCount} = Context,
     case IRCount >= 1000 of

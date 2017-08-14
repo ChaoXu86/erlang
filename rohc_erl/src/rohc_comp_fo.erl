@@ -19,9 +19,10 @@ compress(Context, _RawPackage) ->
     
     case ?cxt_profile(Context):encode(Context, PktType) of
         {ok, NewContext, CompressedPackage} ->
-            %% TODO: update FO statistics
-            NewContext1 = update_counter(NewContext),
-			NewContext2 = update_state(NewContext1, decide_next_state(NewContext1)),              
+            %% Successfully compressed, update state
+            NewContext1 = update_state(NewContext),
+            %% TODO: update other FO statistics
+            NewContext2 = update_counter(NewContext1),
             {ok, NewContext2, CompressedPackage};
         {nok, NewContext, Error} ->
             %% TODO handle error code
@@ -40,17 +41,6 @@ decide_package_type(Context) ->
     ?cxt_profile(Context):decide_package_type(Context, ?state_fo).
 
 %%% -------------------------------------------------------------
-%%% decide_next_state(Context) -> NextState
-%%%
-%%% Context    - #rohc_profile{}
-%%% NextState  - ?state_ir | ?state_fo | ?state_so
-%%%
-%%% decide next state of profile context
-%%% -------------------------------------------------------------
-decide_next_state(Context) ->
-	?cxt_profile(Context):decide_next_state(Context, ?state_fo).
-
-%%% -------------------------------------------------------------
 %%% update_counter(Context) -> NewContext
 %%%
 %%% Context    - #rohc_profile{}
@@ -58,22 +48,22 @@ decide_next_state(Context) ->
 %%% update counter according to current state
 %%% -------------------------------------------------------------
 update_counter(Context) ->
-	#rohc_profile{fo_count = FOCount} = Context,
-	Context#rohc_profile{fo_count = FOCount + 1}.
+    #rohc_profile{fo_count = FOCount} = Context,
+    Context#rohc_profile{fo_count = FOCount + 1}.
 
 %%% -------------------------------------------------------------
-%%% update_state(Context, CurrState) -> NewContext
+%%% update_state(Context) -> NewContext
 %%%
 %%% Context    - #rohc_profile{}
-%%% CurrState  - ?state_ir | ?state_fo | ?state_so
 %%%
 %%% update state of profile context
 %%% -------------------------------------------------------------
-update_state(Context, ?state_fo) ->
-	Context;
-update_state(Context, OtherState) ->
-	Context#rohc_profile{ir_count = 0,
-						 fo_count = 0,
-						 so_count = 0,
-						 state    = OtherState}.
-            
+update_state(#rohc_profile{state = ?state_fo} = Context) ->
+    %% state not changed
+    Context;
+update_state(OldStateContext) ->
+    %% state changed from other state
+    OldStateContext#rohc_profile{ir_count = 0,
+                                 fo_count = 0,
+                                 so_count = 0,
+                                 state    = ?state_fo}.

@@ -105,8 +105,10 @@ could_handle(Context, RawPackage) ->
             #{header_info := IPH_Pre} = PrePackage,            
             case is_same_ip_stream(IPH_New, IPH_Pre) of
                 true ->                    
+                    Tmp = create_generic_tmp(PrePackage, NewPackage),
                     {true, Context#rohc_profile
-                     {package_tmp = NewPackage}};
+                     {package_tmp = NewPackage,
+                      generic_tmp = Tmp}};
                 false ->
                     {false, Context}
             end
@@ -262,6 +264,15 @@ encode(Context, ?pkt_IR) ->
     %%    |                               |
     %%     - - - - - - - - - - - - - - - -
     
+    %% NB, SN is not present in the RFC3095 IR/IR-DYN packet. In RFC3843
+    %% ch3.5, SN is described as following,
+    %% For ROHC IP, the dynamic part of an IR or IR-DYN packet is similar to
+    %% the one for ROHC UDP, with a two-octet field containing the SN
+    %% present !!AT THE END!! of the dynamic chain in IR and IR-DYN packets.  It
+    %% should be noted that the static and dynamic chains have an arbitrary
+    %% length, and the SN is added ONLY ONCE, at the end of the dynamic
+    %% chain in IR and IR-DYN packets.
+
     %% exxucao: type of IR is always <<16#fc>> for IP-only profile
     CidAndType = 
         case Cid of 
@@ -301,7 +312,8 @@ encode(Context, ?pkt_IR) ->
     
     {ok, Context#rohc_profile{sn          = SN+1,
                               sn_window   = rohc_util:sn_window_add_ref_value(SNWindow, SN),
-                              package_tmp = undefined,                              
+                              package_tmp = undefined, 
+                              generic_tmp = undefined,                             
                               package     = PackageInfo},
      <<CidAndType/binary,Profile/binary,CRC/binary,
        StaticChain/binary,DynChain/binary,Seq/binary,
@@ -337,6 +349,15 @@ encode(Context, ?pkt_IR_DYN) ->
     %%    :                               :
     %%     - - - - - - - - - - - - - - - -
     
+    %% NB, SN is not present in the RFC3095 IR/IR-DYN packet. In RFC3843
+    %% ch3.5, SN is described as following,
+    %% For ROHC IP, the dynamic part of an IR or IR-DYN packet is similar to
+    %% the one for ROHC UDP, with a two-octet field containing the SN
+    %% present !!AT THE END!! of the dynamic chain in IR and IR-DYN packets.  It
+    %% should be noted that the static and dynamic chains have an arbitrary
+    %% length, and the SN is added ONLY ONCE, at the end of the dynamic
+    %% chain in IR and IR-DYN packets.
+
     CidAndType = 
         case Cid of 
             0 ->
@@ -372,14 +393,17 @@ encode(Context, ?pkt_IR_DYN) ->
     {ok, Context#rohc_profile{sn=SN+1,
                               sn_window   = rohc_util:sn_window_add_ref_value(SNWindow, SN),
                               package_tmp = undefined,
+                              generic_tmp = undefined,
                               package = PackageInfo},
      <<CidAndType/binary,Profile/binary,CRC/binary,
        DynChain/binary,Seq/binary,Payload/binary>>
     };
 encode(Context, ?pkt_UO_2) ->
+    ?DBG("UO-2 pkt not supported yet", []),
     {ok, Context, <<>>};
 
-encode(Context, _) ->
+encode(Context, OtherPkt) ->
+    ?DBG("~p not supported yet", [OtherPkt]),
     {nok, Context, not_supported}.
 
 %%% -------------------------------------------------------------
@@ -391,10 +415,15 @@ decide_package_type(_Context, ?state_ir) ->
     ?pkt_IR;
 decide_package_type(Context, ?state_fo) ->
     #rohc_profile{package     = LastPkt,
-                  package_tmp = CurrPkt} = Context,
-    case get_diff_fields(LastPkt, CurrPkt) of
+                  package_tmp = CurrPkt,
+                  generic_tmp = Tmp} = Context,
+    
+    #{diff_fields := DiffFields} = Tmp,
+    
+    case DiffFields of
         [] ->
             %% Static IP ID, not supported
+            ?DBG("No diff field found, static IP not supported !", []),
             sid_not_supported;
         [ip_identification] ->
             %% if only ip id changed
@@ -418,7 +447,7 @@ decide_package_type(_Context, ?state_so) ->
 %%%
 %%% decide next state of profile context
 %%% -------------------------------------------------------------
-decide_next_state(Context,?state_ir) ->
+decide_next_state(#rohc_profile{state = ?state_ir} = Context) ->
     #rohc_profile{ir_count = IRCount} = Context,
     case IRCount >= ?ir_count_max of
         true ->
@@ -426,10 +455,24 @@ decide_next_state(Context,?state_ir) ->
         false ->
             ?state_ir
     end;
-decide_next_state(_Context, State) ->
+decide_next_state(#rohc_profile{state = State}) ->
     list_to_atom(?MODULE_STRING ++ "_" ++ 
                      atom_to_list(State) ++ "_change_state_not_supported").
 
+%%% -------------------------------------------------------------
+%%% create_generic_tmp(OldPkt, NewPkt) -> #maps{}
+%%%
+%%% OldPkt - #maps{}
+%%% NewPkt - #maps{}
+%%%
+%%% get generic tmp vars for later use
+%%% -------------------------------------------------------------
+create_generic_tmp(OldPkt, NewPkt) ->
+    DiffFields = get_diff_fields(OldPkt, NewPkt),
+    #{diff_fields     => DiffFields,
+      static_changed  => is_static_changed(DiffFields),
+      dynamic_changed => is_dynamic_changed(DiffFields)}.
+    
 %%% -------------------------------------------------------------
 %%% get_diff_fields(OldPkt, NewPkt) -> [atom()]
 %%%
@@ -442,4 +485,35 @@ get_diff_fields(#{header_info:=OldH},#{header_info:=NewH}) ->
     Keys = maps:keys(OldH),
     [Key || Key<-Keys, maps:get(Key, OldH) /= maps:get(Key, NewH)].
 
+%%% -------------------------------------------------------------
+%%% is_static_changed(DiffFields) -> boolean()
+%%%
+%%% DiffFields - []
+%%%
+%%% return if static field of IP header is changed
+%%% RFC3095 ch5.7.7.4, static chain includes version, protocol, src address and
+%%% dest address. src/dst address are not checked since different pair of
+%%% src/dst addresses will be mapped into different rohc context
+%%% -------------------------------------------------------------
+is_static_changed(DiffFields) ->
+    lists:any(fun(DynField) -> 
+                      lists:member(DynField, DiffFields)
+              end, [ip_version,
+                    ip_protocol]).
 
+%%% -------------------------------------------------------------
+%%% is_dynamic_changed(DiffFields) -> boolean()
+%%%
+%%% DiffFields - []
+%%%
+%%% return if dynamic field of IP header is changed
+%%%
+%%% RFC3095 ch5.7.7.4, dynamic chain includes tos, ttl, and id
+%%% Here, id of ip is not checked in this function since id is 
+%%% handled differently.
+%%% -------------------------------------------------------------
+is_dynamic_changed(DiffFields) ->
+ lists:any(fun(DynField) -> 
+                      lists:member(DynField, DiffFields)
+              end, [ip_tos,
+                    ip_ttl]).

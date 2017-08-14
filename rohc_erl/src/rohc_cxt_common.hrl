@@ -8,7 +8,7 @@
          create_context/3,
          encode/2,
          decide_package_type/2,
-         decide_next_state/2]).
+         decide_next_state/1]).
 -endif.
 
 -record(rohc_profile,
@@ -28,8 +28,8 @@
          sn,                   %% integer(), current sequence number
          sn_window,            %% #wlsb{}, window used to encode sn
          package,              %% maps(), common package info of last sent package
-         package_tmp           %% maps(), common package info of current processing package
-        
+         package_tmp,          %% maps(), common package info of current processing package
+         generic_tmp           %% maps(), profile specific generic tmp vars
         }).
 
 %% common format of package field.
@@ -47,6 +47,12 @@
 %%
 %% Maps is flexiable to handle package cross different layer
 
+%% format of generic_tmp
+%%   #{diff_fields     => [ ip_identification, ip_crc, ip_ttl ...]
+%%     static_changed  => false,
+%%     dynamic_changed => true}
+
+  
 -define(cxt_id(Cxt),       (element(#rohc_profile.context_id,Cxt))).
 -define(cxt_profile(Cxt),  (element(#rohc_profile.profile,Cxt))).
 -define(cxt_timestamp(Cxt),(element(#rohc_profile.last_act_ts,Cxt))).
@@ -138,5 +144,12 @@
 
 -define(ir_count_max, 3).
 -define(fo_count_max, 3).
+
+%% TODO remove DBG
+-define(DBG(Format, Params), case rohc_comp_context:is_debug_on() of
+                                 true -> io:format("[ROHC DEBUG] [~p:~p(~p)] "++ Format, [?MODULE,?FUNCTION_NAME,?LINE|Params]),
+                                         io:format("~n");
+                                 false -> do_nothing
+                             end).
 
 -endif.

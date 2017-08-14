@@ -17,12 +17,15 @@
 %%%
 %%% 1. try to use ?ci_var as less as possible
 %%% 2. only update context when everything is ok.
+%%%    pros. in case of de/encoding failure, no need to rollback
 
 -export([init/2,
          get_context/1,
          put_context/1]).
 
--export([init_dyn/0]).
+-export([init_dyn/0,
+         enable_debug/1,
+         is_debug_on/0]).
 
 -include("eps_common.hrl").
 -include("rohc_cxt_common.hrl").
@@ -311,10 +314,21 @@ get_free_cxt_id([_UsedId|_Rest],FreeId,_MaxCxtId) ->
 %% on AP, run
 %% 1> rohc_comp_context:init_dyn().
 %% 2> rohc_comp:create(15, 4).
-%% 3> rohc_comp:compress(Ipv4).
+%% 3> rohc_comp:compress(Ipv4).   
 init_dyn() ->
     put(nsf_init_data,{nsfwos_initData,worker_class, worker_key, parent_if,
                        parent_proc, server_ref, ccTag, creation, dynamic_tc,
                        park_timer, min_heap_size, worker_if,
                        replica_state}).
 
+enable_debug(Flag) ->
+    case Flag of
+        true -> put(rohc_debug_flag, Flag);
+        _ -> put(rohc_debug_flag, false)
+    end.
+
+is_debug_on() ->
+    case get(rohc_debug_flag) of
+        true -> true;
+        _ -> false
+    end.
